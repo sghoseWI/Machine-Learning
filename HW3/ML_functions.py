@@ -27,15 +27,21 @@ def read_data(filepath, file_type = None):
         full_df = pd.read_json(filepath)
     return full_df
 
+def filter_df_by_date_range(df, date_var, start, end):
+    df = df[(df[date_var] >= start) & (df[date_var] <= end)]
+    return df
+
 def add_dummy_variable(df, var, dummy_var, lambda_equation):
     df[dummy_var] = df[var].apply(lambda_equation)
 
-def test_train_data_split(df, var, test_size):
+# def remove_outlier(df):
+
+
+def train_test_data_split(df, var, test_size):
     X = df
     Y = df[var]
     x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=test_size)
     return x_train, x_test, y_train, y_test
-
 
 def pre_process(df, var):
     return df['var'].describe()
@@ -45,6 +51,76 @@ def convert_true_false_1_0(df):
     for col in col_list:
         if 'f' in list(df[col].unique()):
             df[col] = df[col].apply(lambda x: 1 if x=='t' else 0)
+
+def binary_categorical_vars(df):
+    binary_categorical_vars_list = []
+    for column in df.columns:
+        if len(df[column].unique()) <= 2:
+            binary_categorical_vars_list.append(column)
+    return binary_categorical_vars_list
+
+def non_binary_categorical_vars(df, binary_categorical_vars_list):
+    non_binary_categorical_vars_list = []
+    for column in df.columns:
+        if column not in binary_categorical_vars_list:
+            non_binary_categorical_vars_list.append(column)
+    return non_binary_categorical_vars_list
+
+def join_and_drop_dummies(df_to_join_to, vars_list):
+    for each in vars_list:
+        dummies_df = pd.get_dummies(df_to_join_to[each])
+        df_to_join_to = df_to_join_to.join(dummies_df)
+        df_to_join_to = df_to_join_to.drop(each, axis = 1)
+    return df_to_join_to
+
+def get_dummies_from_categorical_var(df, var_list):
+    dummies_df = pd.get_dummies(df[var_list])
+    return dummies_df
+
+def join_dummies(df_to_join_to, dummies_df):
+    df_to_join_to = df_to_join_to.join(dummies_df)
+    return df_to_join_to
+
+def drop_non_dummy_cat_var(df, var_list):
+    for var in var_list:
+        df = df.drop(var, axis = 1)
+    return df
+
+def create_add_dummies_from_category_vars(df, non_binary_categorical_vars_list):
+    for column in non_binary_categorical_vars_list:
+        dummies_df = pd.get_dummies(df[column])
+        df = df.join(dummies_df)
+        df = df.drop(column, axis = 1)
+    return df
+
+def temporal_train_test_data_split(df, features, filter_var, outcome_var,  start_date):
+    if start_date == '2011-01-01':
+        training_end_date = '2011-12-31'
+        testing_end_date = '2012-06-31'
+
+    elif start_date == '2011-07-01':
+        training_end_date = '2012-07-31'
+        testing_end_date = '2012-12-31'
+
+    elif start_date == '2012-01-01':
+        training_end_date = '2012-12-31'
+        testing_end_date = '2013-06-31'
+
+    y_df = df[[filter_var, outcome_var]]
+
+    x_train_filter_by_date = filter_df_by_date_range(df, filter_var, training_end_date, testing_end_date)
+    x_test_filter_by_date = filter_df_by_date_range(df, filter_var, start_date, training_end_date)
+
+    y_train_filter_by_date = filter_df_by_date_range(y_df, filter_var, training_end_date, testing_end_date)
+    y_test_filter_by_date = filter_df_by_date_range(y_df, filter_var, start_date, training_end_date)
+
+    x_train = x_train_filter_by_date[features]
+    x_test = x_test_filter_by_date[features]
+
+    y_train = y_train_filter_by_date[outcome_var]
+    y_test = y_test_filter_by_date[outcome_var]
+
+    return x_test, x_train, y_test, y_train
 
 def find_missing_values(df):
     missing_df = df.isnull().sum().sort_values(ascending = False)
@@ -130,12 +206,24 @@ def precision_recall_threshold(y_test, y_score):
     precision, recall, thresholds = precision_recall_curve(y_true, y_scores)
     return precision, recall, thresholds
 
-def plot_precision_recall_binary_classification(y_test, y_score):
+def plot_precision_recall_curve(model_instance, x_test, x_train, y_test, y_train):
+    random_state = np.random.RandomState(0)
+    classifier = model_instance
+    classifier.fit(x_train, y_train)
+    y_score = classifier.decision_function(x_test)
+
+    from sklearn.metrics import precision_recall_curve
+    import matplotlib.pyplot as plt
+
     precision, recall, _ = precision_recall_curve(y_test, y_score)
-    plt.step(recall, precision, color='b', alpha=0.2, where='post')
-    plt.fill_between(recall, precision, step='post', alpha=0.2, color='b')
+
+    plt.step(recall, precision, color='b', alpha=0.2,
+             where='post')
+    plt.fill_between(recall, precision, step='post', alpha=0.2,
+                     color='b')
+
     plt.xlabel('Recall')
     plt.ylabel('Precision')
     plt.ylim([0.0, 1.05])
     plt.xlim([0.0, 1.0])
-    plt.title('2-class Precision-Recall curve: AP={0:0.2f}'.format(average_precision))
+    plt.title(model_instance)
