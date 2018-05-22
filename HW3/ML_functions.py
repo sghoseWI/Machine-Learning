@@ -310,7 +310,7 @@ def precision_recall_threshold(y_test, y_score):
     return precision, recall, thresholds
 
 '''
-Plots precision recall cursve from train/test split data
+Plots precision recall curves from train/test split data
 '''
 def plot_precision_recall_curve(model_instance, x_test, x_train, y_test, y_train):
     random_state = np.random.RandomState(0)
